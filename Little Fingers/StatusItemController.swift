@@ -9,11 +9,10 @@
 import Cocoa
 
 class StatusItemController: NSObject {
-	let statusItem = NSStatusBar.system().statusItem(withLength: NSVariableStatusItemLength)
+	let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 	var isAccessibilityEnabled = false
-	var accessibilityTimer:Timer?
 	
-	let aboutWindowController = AboutWindowController(windowNibName: "AboutWindow")
+	let aboutWindowController = AboutWindowController(windowNibName: NSNib.Name("AboutWindow"))
 	
 	override init() {
 		super.init()
@@ -23,7 +22,7 @@ class StatusItemController: NSObject {
 		buildMenu()
 		
 		if let button = statusItem.button {
-			if let image = NSImage(named: "off") {
+			if let image = NSImage(named: NSImage.Name("off")) {
 				image.isTemplate = true
 				button.image = image
 			}
@@ -31,7 +30,7 @@ class StatusItemController: NSObject {
 		
 		NotificationCenter.default.addObserver(self,
 		                                       selector: #selector(updateIcon),
-		                                       name: NSNotification.Name(rawValue: SINotificationLockChanged),
+		                                       name: SINotificationLockChanged,
 		                                       object: nil)
 	}
 	
@@ -46,35 +45,17 @@ class StatusItemController: NSObject {
 			                     repeats: false)
 		}
 		else {
-			showSecurityPrivacy()
-		}
-		accessibilityTimer = Timer.scheduledTimer(timeInterval: 0.5,
-		                                          target: self,
-		                                          selector: #selector(updateAccessibility),
-		                                          userInfo: nil,
-		                                          repeats: true)
-	}
-	
-	func updateAccessibility() {
-		let wasAccessibilityEnabled = isAccessibilityEnabled
-		isAccessibilityEnabled = TapController.isAccessibilityEnabled()
-		if isAccessibilityEnabled {
-			accessibilityTimer?.invalidate()
-			if !wasAccessibilityEnabled {
-				restartApp()
-			}
+			// Give user a moment to see the System Settings before quitting
+			Timer.scheduledTimer(timeInterval: 1.0,
+			                     target: self,
+			                     selector: #selector(quitApp),
+			                     userInfo: nil,
+			                     repeats: false)
 		}
 	}
 	
-	func restartApp() {
-		// TODO: also quit System Preferences since they lose focus on restart?
-		let url = URL(fileURLWithPath: Bundle.main.resourcePath!)
-		let path = url.deletingLastPathComponent().deletingLastPathComponent().absoluteString
-		let task = Process()
-		task.launchPath = "/usr/bin/open"
-		task.arguments = [path]
-		task.launch()
-		NSApp.terminate(self)
+	@objc func quitApp() {
+		NSApp.terminate(nil)
 	}
 	
 	func buildMenu() {
@@ -89,33 +70,25 @@ class StatusItemController: NSObject {
 		
 		menu.addItem(NSMenuItem.separator())
 		
-		menu.addItem(NSMenuItem(title: "Quit Little Fingers", action: #selector(NSApp.terminate), keyEquivalent: ""))
+		menu.addItem(NSMenuItem(title: "Quit Little Fingers", action: #selector(NSApplication.terminate(_:)), keyEquivalent: ""))
 		
 		statusItem.menu = menu
 	}
 	
-	func showSecurityPrivacy() {
-		let path = Bundle.main.path(forResource: "privacy", ofType: "scpt")
-		let url = URL.init(fileURLWithPath: path!)
-		let appleScript = NSAppleScript.init(contentsOf: url, error: nil)
-		appleScript?.executeAndReturnError(nil)
-	}
-	
-	func showAbout() {
+    @objc func showAbout() {
 		NSApp.activate(ignoringOtherApps: true)
 		aboutWindowController.showWindow(NSApp.delegate)
 	}
 	
-	func updateIcon() {
+    @objc func updateIcon() {
 		if let button = statusItem.button {
 			if TapController.isLocked() {
-				if let image = NSImage(named: "on") {
+				if let image = NSImage(named: NSImage.Name("on")) {
 					image.isTemplate = true
 					button.image = image
 				}
-			}
-			else {
-				if let image = NSImage(named: "off") {
+			} else {
+				if let image = NSImage(named: NSImage.Name("off")) {
 					image.isTemplate = true
 					button.image = image
 				}
@@ -129,7 +102,7 @@ extension StatusItemController : NSMenuDelegate {
 		(NSApp.delegate as! AppDelegate).hideWindows()
 	}
 	
-	func menuDidClose(_ menu: NSMenu) {
+	@objc func menuDidClose(_ menu: NSMenu) {
 		Timer.scheduledTimer(timeInterval: 0,
 		                     target: NSApp.delegate as! AppDelegate,
 		                     selector: #selector(AppDelegate.hideApp),

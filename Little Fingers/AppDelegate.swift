@@ -8,7 +8,7 @@
 
 import Cocoa
 
-let SINotificationLockChanged = "SINotificationLockChanged"
+let SINotificationLockChanged = Notification.Name("SINotificationLockChanged")
 
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -17,13 +17,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 	var statusItemController:StatusItemController!
 
 	func applicationDidFinishLaunching(_ aNotification: Notification) {
-		NSApplication.shared().setActivationPolicy(.accessory)
+		NSApplication.shared.setActivationPolicy(.accessory)
 		
 		let defaults = UserDefaults.standard
-		defaults.register(defaults: ["autoLaunch": true,
+		defaults.register(defaults: ["autoLaunch": false,
 		                             "firstRun": true])
 		
-		if defaults.object(forKey: "firstRun") as! Bool {
+        if defaults.bool(forKey: "firstRun") {
 			defaults.set(false, forKey: "firstRun")
 			LoginItems.addApp()
 		}
@@ -52,13 +52,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 		}
 	}
 	
-	func hideApp() {
-		var visibleWindows:Int = 0
-		for window in NSApp.windows {
-			if window.isKind(of: NSPanel.self) && window.isVisible {
-				visibleWindows += 1
-			}
-		}
+	@objc func hideApp() {
+		let visibleWindows = NSApp.windows.filter { $0.isKind(of: NSPanel.self) && $0.isVisible }.count
 		if visibleWindows == 0 {
 			NSApp.hide(nil)
 		}

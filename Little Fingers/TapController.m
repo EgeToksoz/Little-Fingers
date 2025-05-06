@@ -27,7 +27,7 @@ BOOL isLDown = NO;
 BOOL isLocked = NO;
 BOOL wasLocked = NO;
 
-void lockChanged() {
+void lockChanged(void) {
 	[[NSNotificationCenter defaultCenter] postNotification:[NSNotification notificationWithName:@"SINotificationLockChanged" object:nil]];
 }
 
@@ -35,10 +35,10 @@ CGEventRef tapCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event
 	if (type == kCGEventFlagsChanged) {
 		NSEventModifierFlags flags = [[NSEvent eventWithCGEvent:event] modifierFlags];
 		
-		isCommandDown = (flags & NSCommandKeyMask) == NSCommandKeyMask;
-		isOptionDown = (flags & NSAlternateKeyMask) == NSAlternateKeyMask;
-		isControlDown = (flags & NSControlKeyMask) == NSControlKeyMask;
-		isShiftDown = (flags & NSShiftKeyMask) == NSShiftKeyMask;
+        isCommandDown = (flags & NSEventModifierFlagCommand) == NSEventModifierFlagCommand;
+        isOptionDown = (flags & NSEventModifierFlagOption) == NSEventModifierFlagOption;
+        isControlDown = (flags & NSEventModifierFlagControl) == NSEventModifierFlagControl;
+        isShiftDown = (flags & NSEventModifierFlagShift) == NSEventModifierFlagShift;
 	}
 	
 	CGKeyCode keycode = (CGKeyCode)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
@@ -85,27 +85,39 @@ CFRunLoopSourceRef	ignoreRunLoopSource;
 -(id)init {
 	self = [super init];
 	if (self) {
-		CGEventMask	listenEventMask	= CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp) | CGEventMaskBit(kCGEventFlagsChanged);
-		CGEventMask	ignoreEventMask	= kCGEventMaskForAllEvents;
+		if (![TapController isAccessibilityEnabled]) {
+			NSLog(@"Accessibility permissions not granted");
+			return self;
+		}
+		
+		CGEventMask listenEventMask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp) | CGEventMaskBit(kCGEventFlagsChanged);
+		CGEventMask ignoreEventMask = kCGEventMaskForAllEvents;
 		
 		listenEventTap = CGEventTapCreate(kCGSessionEventTap,
-										  kCGHeadInsertEventTap,
-										  kCGEventTapOptionDefault,
-										  listenEventMask,
-										  tapCallback, NULL);
+										kCGHeadInsertEventTap,
+										kCGEventTapOptionDefault,
+										listenEventMask,
+										tapCallback, NULL);
 		ignoreEventTap = CGEventTapCreate(kCGSessionEventTap,
-										  kCGHeadInsertEventTap,
-										  kCGEventTapOptionDefault,
-										  ignoreEventMask,
-										  tapCallback, NULL);
+										kCGHeadInsertEventTap,
+										kCGEventTapOptionDefault,
+										ignoreEventMask,
+										tapCallback, NULL);
 		
 		if (!listenEventTap || !ignoreEventTap) {
-			NSLog(@"failed to create event taps");
-			exit(1);
+			NSLog(@"Failed to create event taps - please check accessibility permissions");
+			return self;
 		}
 		
 		listenRunLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, listenEventTap, 0);
 		ignoreRunLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, ignoreEventTap, 0);
+		
+		if (!listenRunLoopSource || !ignoreRunLoopSource) {
+			NSLog(@"Failed to create run loop sources");
+			if (listenEventTap) CFRelease(listenEventTap);
+			if (ignoreEventTap) CFRelease(ignoreEventTap);
+			return self;
+		}
 		
 		[TapController listen];
 		isTapEnabled = YES;
@@ -140,9 +152,17 @@ CFRunLoopSourceRef	ignoreRunLoopSource;
 }
 
 +(BOOL)isAccessibilityEnabled {
-	// http://stackoverflow.com/questions/17693408/enable-access-for-assistive-devices-programmatically-on-10-9
+	// First check if we already have permissions
 	NSDictionary *options = @{(__bridge id)kAXTrustedCheckOptionPrompt: @NO};
-	return AXIsProcessTrustedWithOptions((CFDictionaryRef)options);
+	BOOL isTrusted = AXIsProcessTrustedWithOptions((CFDictionaryRef)options);
+	
+	if (!isTrusted) {
+		// If not trusted, prompt for permissions
+		options = @{(__bridge id)kAXTrustedCheckOptionPrompt: @YES};
+		isTrusted = AXIsProcessTrustedWithOptions((CFDictionaryRef)options);
+	}
+	
+	return isTrusted;
 }
 
 +(BOOL)isLocked {
@@ -162,6 +182,27 @@ CFRunLoopSourceRef	ignoreRunLoopSource;
 		wasLocked = NO;
 		lockChanged();
 	}
+}
+
+-(void)dealloc {
+	if (listenEventTap) {
+		CFRelease(listenEventTap);
+		listenEventTap = NULL;
+	}
+	if (ignoreEventTap) {
+		CFRelease(ignoreEventTap);
+		ignoreEventTap = NULL;
+	}
+	if (listenRunLoopSource) {
+		CFRelease(listenRunLoopSource);
+		listenRunLoopSource = NULL;
+	}
+	if (ignoreRunLoopSource) {
+		CFRelease(ignoreRunLoopSource);
+		ignoreRunLoopSource = NULL;
+	}
+	
+	[[NSDistributedNotificationCenter defaultCenter] removeObserver:self];
 }
 
 @end

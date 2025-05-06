@@ -6,6 +6,7 @@
 //  Copyright © 2017 Shaun Inman. All rights reserved.
 //
 
+import SwiftUI
 import Cocoa
 
 // TODO: launch at login checkbox is unresponsive at launch...
@@ -13,61 +14,85 @@ import Cocoa
 // TODO: window controls don't work either? wth
 // TODO: kinda fixed by delaying opening by a fraction of a second
 
-class AboutWindowController: NSWindowController {
-
-	@IBOutlet weak var nameLabel:NSTextField!
-	@IBOutlet weak var versionLabel:NSTextField!
-	@IBOutlet weak var iconImageView:NSImageView!
-	@IBOutlet weak var creditsScrollView: NSScrollView!
-	@IBOutlet weak var autoLaunch:NSButton!
+struct AboutView: View {
+	@State public var isAutoLaunch: Bool
+	let bundle = Bundle.main
+	let plist = Bundle.main.infoDictionary!
 	
-    override func windowDidLoad() {
-        super.windowDidLoad()
-		
-		iconImageView.image = NSApp.applicationIconImage
-		
-		let bundle = Bundle.main
-		let plist = bundle.infoDictionary!
-		let name = plist["CFBundleName"] as! String
-		let versionInternal = plist["CFBundleVersion"] as! String
-		let versionExternal = plist["CFBundleShortVersionString"] as! String
-		let credits = bundle.path(forResource: "Credits", ofType: "rtf")
-		
-		nameLabel.stringValue = name
-		versionLabel.stringValue = "\(versionExternal) (\(versionInternal))"
-		
-		let creditsTextView = creditsScrollView.contentView.documentView as! NSTextView
-		creditsTextView.textContainerInset = NSSize(width: 14, height: 14)
-		creditsTextView.readRTFD(fromFile: credits!)
-		
+	init() {
 		let defaults = UserDefaults.standard
-		autoLaunch.state = defaults.object(forKey: "autoLaunch") as! Int
-    }
+		_isAutoLaunch = State(initialValue: defaults.bool(forKey: "autoLaunch"))
+	}
+	
+	var body: some View {
+		VStack(spacing: 20) {
+			Image(nsImage: NSApp.applicationIconImage ?? NSImage())
+				.resizable()
+				.frame(width: 64, height: 64)
+			
+			Text(plist["CFBundleName"] as? String ?? "")
+				.font(.title)
+				.foregroundColor(.primary)
+			
+			Text("\(plist["CFBundleShortVersionString"] as? String ?? "") (\(plist["CFBundleVersion"] as? String ?? ""))")
+				.font(.subheadline)
+				.foregroundColor(.secondary)
+			
+			ScrollView {
+				if let creditsPath = bundle.path(forResource: "Credits", ofType: "rtf"),
+				   let creditsData = try? Data(contentsOf: URL(fileURLWithPath: creditsPath)),
+				   let creditsString = try? NSAttributedString(data: creditsData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+					Text(AttributedString(creditsString))
+						.padding()
+				}
+			}
+			.frame(height: 120)
+			
+			Toggle("Launch at login", isOn: $isAutoLaunch)
+				.onChange(of: isAutoLaunch) { newValue in
+					UserDefaults.standard.set(newValue, forKey: "autoLaunch")
+					do {
+						if newValue {
+							try SMAppService.mainApp.register()
+						} else {
+							try SMAppService.mainApp.unregister()
+						}
+					} catch {
+						print("Failed to set login item status: \(error.localizedDescription)")
+					}
+				}
+				.padding(.horizontal)
+		}
+		.padding(.top, 50)
+		.padding(.bottom, 50)
+		.frame(width: 330, height: 380)
+	}
+}
+
+class AboutWindowController: NSWindowController {
+	override func windowDidLoad() {
+		super.windowDidLoad()
+		
+		let contentView = AboutView()
+		let hostingController = NSHostingController(rootView: contentView)
+		window?.contentViewController = hostingController
+		window?.titlebarAppearsTransparent = true
+		window?.styleMask.remove(.resizable)
+		window?.center()
+	}
 	
 	override func showWindow(_ sender: Any?) {
 		super.showWindow(sender)
 		
 		let defaults = UserDefaults.standard
-		let stillAutoLaunch = LoginItems.appAlreadyExists()
-		let didAutoLaunch = defaults.object(forKey: "autoLaunch") as! Bool
+		let stillAutoLaunch = SMAppService.mainApp.status == .enabled
+		let didAutoLaunch = defaults.bool(forKey: "autoLaunch")
 		
 		if stillAutoLaunch != didAutoLaunch {
-			let autoLaunchInt = stillAutoLaunch ? 1 : 0
-			defaults.set(autoLaunchInt, forKey: "autoLaunch")
-			if autoLaunch != nil {
-				autoLaunch.state = autoLaunchInt
+			defaults.set(stillAutoLaunch, forKey: "autoLaunch")
+			if let hostingController = window?.contentViewController as? NSHostingController<AboutView> {
+				hostingController.rootView.isAutoLaunch = stillAutoLaunch
 			}
-		}
-	}
-	
-	@IBAction func changeAutoLaunch(_ sender: NSButton) {
-		UserDefaults.standard.set(autoLaunch.state, forKey: "autoLaunch")
-		
-		if autoLaunch.state == 1 {
-			LoginItems.addApp()
-		}
-		else {
-			LoginItems.removeApp()
 		}
 	}
 }
