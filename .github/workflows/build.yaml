@@ -27,7 +27,7 @@ jobs:
         chmod +x xcodebuild.sh
         ./xcodebuild.sh
         cd build/Build/Products/release
-        ditto -c -k --keepParent Little\ Fingers.app Little\ Fingers.zip
+        ditto -c -k --keepParent Little\ Fingers.app LittleFingers.zip
         
 
     - name: Create GitHub Draft
@@ -37,4 +37,4 @@ jobs:
         name: Little Fingers v${{ env.LEVEL }}
         draft: true
         prerelease: false
-        files: build/Build/Products/release/Little\ Fingers.zip
+        files: build/Build/Products/release/LittleFingers.zip
